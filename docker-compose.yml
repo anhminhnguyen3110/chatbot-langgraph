@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: agent
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Agent Server
+  agent:
+    build:
+      context: .
+      dockerfile: deployments/docker/Dockerfile
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/agent
+      - AUTH_TYPE=${AUTH_TYPE:-noop}
+      - KEYCLOAK_SERVER_URL=${KEYCLOAK_SERVER_URL:-http://localhost:8080}
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM:-langgraph-app}
+      - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID:-langgraph-client}
+      - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PRIMARY_MODEL_ID=${PRIMARY_MODEL_ID:-google_genai/gemini-2.5-flash}
+      - FALLBACK_MODEL_ID=${FALLBACK_MODEL_ID:-google_genai/gemini-2.0-flash}
+      - DEBUG=true
+      - PORT=${PORT:-8000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./agent.json:/app/agent.json:ro
+      - ./graphs:/app/graphs:ro
+      - ./src:/app/src:ro # for hot reload support of server
+      - ./auth.py:/app/auth.py:ro
+      - ./.env:/app/.env:ro
+      - ./alembic:/app/alembic:ro # for migrations
+    command: >
+      sh -c "
+        echo 'Running database migrations...' &&
+        alembic upgrade head &&
+        echo 'Starting Agent server...' &&
+        uvicorn src.agent_server.main:app --host 0.0.0.0 --port $${PORT:-8000} --reload
+      "
+volumes:
+  postgres_data:

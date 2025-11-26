@@ -1,0 +1,19 @@
+{
+  "graphs": {
+    "agent": {
+      "path": "./graphs/react_agent/graph.py:agent",
+      "async_loaders": {
+        "mcp_tools": "graphs.react_agent.tools.mcp:load_mcp_tools"
+      }
+    },
+    "agent_hitl": {
+      "path": "./graphs/react_agent_hitl/graph.py:graph"
+    },
+    "subgraph_agent": {
+      "path": "./graphs/subgraph_agent/graph.py:graph"
+    },
+    "subgraph_hitl_agent": {
+      "path": "./graphs/subgraph_hitl_agent/graph.py:graph"
+    }
+  }
+}

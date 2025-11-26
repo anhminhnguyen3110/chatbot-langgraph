@@ -1,0 +1,73 @@
+version: '3.8'
+
+# Full stack with Keycloak integration
+# Usage: docker compose -f docker-compose.yml -f docker-compose.full.yml up
+
+services:
+  # PostgreSQL for Keycloak
+  postgres-keycloak:
+    image: postgres:16-alpine
+    container_name: keycloak-db
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - keycloak_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Keycloak Server
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: keycloak-server
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres-keycloak:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak_password
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_PROXY: edge
+    command: start-dev
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres-keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Override Agent to use Keycloak auth
+  agent:
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/agent
+      - AUTH_TYPE=keycloak
+      - KEYCLOAK_SERVER_URL=http://keycloak:8080
+      - KEYCLOAK_REALM=langgraph-app
+      - KEYCLOAK_CLIENT_ID=langgraph-client
+      - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET:-}
+      - AML_MCP_URL=${AML_MCP_URL:-http://mcp-server:5000/mcp}
+      - AML_MCP_SERVER_NAME=${AML_MCP_SERVER_NAME:-aml-mcp}
+      - DEBUG=true
+      - PORT=${PORT:-8000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+
+volumes:
+  keycloak_postgres_data:
