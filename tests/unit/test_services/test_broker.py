@@ -1,4 +1,3 @@
-
 """Unit tests for RunBroker and BrokerManager"""
 
 import asyncio
@@ -49,7 +48,8 @@ class TestRunBroker:
                 events.append((event_id, payload))
             assert isinstance(events, list)
 
-    def test_mark_finished_logs(self):
+    @pytest.mark.asyncio
+    async def test_mark_finished_logs(self):
         """Test mark_finished logs debug (line 152)"""
 
         mock_logger = mock.MagicMock()
@@ -161,7 +161,8 @@ class TestRunBroker:
 
 
 class TestBrokerManager:
-    def test_cleanup_broker_logs(self):
+    @pytest.mark.asyncio
+    async def test_cleanup_broker_logs(self):
         """Test cleanup_broker logs debug (line 248)"""
 
         mock_logger = mock.MagicMock()
@@ -176,7 +177,8 @@ class TestBrokerManager:
         assert "run-log" in call_args
         assert "cleanup" in call_args
 
-    def test_remove_broker_logs(self):
+    @pytest.mark.asyncio
+    async def test_remove_broker_logs(self):
         """Test remove_broker logs debug (line 251-252)"""
 
         mock_logger = mock.MagicMock()
