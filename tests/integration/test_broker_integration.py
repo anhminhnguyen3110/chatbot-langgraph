@@ -99,7 +99,7 @@ class TestBrokerProducerConsumer:
 
         async def consumer():
             events = []
-            async for event_id, payload in broker.aiter():
+            async for event_id, _payload in broker.aiter():
                 events.append(event_id)
             return events
 
@@ -145,7 +145,7 @@ class TestBrokerErrorScenarios:
 
         async def consumer():
             events = []
-            async for event_id, payload in broker.aiter():
+            async for event_id, _payload in broker.aiter():
                 events.append(event_id)
             return events
 
@@ -172,7 +172,7 @@ class TestBrokerErrorScenarios:
 
         async def consumer():
             events = []
-            async for event_id, payload in broker.aiter():
+            async for event_id, _payload in broker.aiter():
                 events.append(event_id)
                 if len(events) >= 10:
                     # Consumer decides to stop early
@@ -188,10 +188,9 @@ class TestBrokerErrorScenarios:
 
         # Cancel producer as well
         producer_task.cancel()
-        try:
+        import contextlib
+        with contextlib.suppress(asyncio.CancelledError):
             await producer_task
-        except asyncio.CancelledError:
-            pass
 
 
 @pytest.mark.integration
@@ -217,7 +216,7 @@ class TestBrokerManagerIntegration:
 
             # Consumer
             events = []
-            async for event_id, payload in broker.aiter():
+            async for event_id, _payload in broker.aiter():
                 events.append(event_id)
 
             manager.cleanup_broker(run_id)

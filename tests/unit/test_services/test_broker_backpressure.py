@@ -35,8 +35,8 @@ class TestBackpressure:
         events_received = []
 
         async def consumer():
-            async for event_id, payload in broker.aiter():
-                events_received.append(event_id)
+            async for _event_id, _payload in broker.aiter():
+                events_received.append(_event_id)
                 await asyncio.sleep(0.01)  # Simulate processing
 
         consumer_task = asyncio.create_task(consumer())
@@ -81,7 +81,7 @@ class TestBackpressure:
 
         # Consume 3 events
         count = 0
-        async for event_id, payload in broker.aiter():
+        async for _event_id, _payload in broker.aiter():
             count += 1
             if count == 3:
                 break

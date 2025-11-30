@@ -2,9 +2,9 @@ import os
 from typing import Any
 
 import structlog
+from langfuse.langchain import CallbackHandler
 
 from .base import ObservabilityProvider
-from langfuse.langchain import CallbackHandler
 
 logger = structlog.getLogger(__name__)
 

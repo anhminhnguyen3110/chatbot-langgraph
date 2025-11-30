@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from langchain_core.tools import tool
+
 from .params import ThinkToolParams
 from .tool_registry import add_tool
 

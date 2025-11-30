@@ -33,7 +33,6 @@ class TestRunBroker:
         import unittest.mock as mock
 
         # Patch finished.wait to block, then cancel
-        orig_wait = broker.finished.wait
 
         async def fake_wait():
             raise asyncio.CancelledError()
@@ -164,7 +163,6 @@ class TestBrokerManager:
     def test_cleanup_broker_logs(self, caplog, capsys):
         """Test cleanup_broker logs debug (line 248)"""
         manager = BrokerManager()
-        broker = manager.get_or_create_broker("run-log")
         with caplog.at_level("DEBUG"):
             manager.cleanup_broker("run-log")
         log_msg = "Marked broker for run run-log for cleanup"
@@ -178,7 +176,6 @@ class TestBrokerManager:
     def test_remove_broker_logs(self, caplog, capsys):
         """Test remove_broker logs debug (line 251-252)"""
         manager = BrokerManager()
-        broker = manager.get_or_create_broker("run-log")
         with caplog.at_level("DEBUG"):
             manager.remove_broker("run-log")
         log_msg = "Removed broker for run run-log"
@@ -197,17 +194,15 @@ class TestBrokerManager:
         broker = manager.get_or_create_broker("run-err")
         import unittest.mock as mock
 
-        with mock.patch.object(broker, "is_finished", side_effect=Exception("fail")):
-            with caplog.at_level("ERROR"):
+        with mock.patch.object(broker, "is_finished", side_effect=Exception("fail")), caplog.at_level("ERROR"):
                 # Patch sleep to run only once
                 async def fast_sleep(_):
                     raise Exception("fail")
 
                 with mock.patch("asyncio.sleep", side_effect=fast_sleep):
-                    try:
+                    import contextlib
+                    with contextlib.suppress(Exception):
                         await manager._cleanup_old_brokers()
-                    except Exception:
-                        pass
         assert any(
             "Error in broker cleanup task" in m for m in caplog.text.splitlines()
         )

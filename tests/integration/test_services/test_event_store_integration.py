@@ -66,8 +66,9 @@ async def clean_event_store_tables(database_available):
     if not database_available:
         pytest.skip("Database not available for integration tests")
 
-    from src.agent_server.core.database import db_manager
     from sqlalchemy import text
+
+    from src.agent_server.core.database import db_manager
 
     async def cleanup():
         await db_manager.initialize()

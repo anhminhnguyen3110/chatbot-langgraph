@@ -1,7 +1,7 @@
 """Unit tests for graceful shutdown manager"""
 
 import asyncio
-import signal
+import contextlib
 
 import pytest
 
@@ -33,10 +33,10 @@ class TestShutdownManager:
         assert "task_1" not in manager.get_active_task_ids()
 
         task.cancel()
-        try:
+        import contextlib
+
+        with contextlib.suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            pass
 
     @pytest.mark.asyncio
     async def test_shutdown_cancels_tasks(self):
@@ -187,12 +187,10 @@ class TestShutdownManager:
 
         # Cancel remaining
         for task in tasks:
-            if not task.done():
-                task.cancel()
-                try:
+            with contextlib.suppress(asyncio.CancelledError):
+                if not task.done():
+                    task.cancel()
                     await task
-                except asyncio.CancelledError:
-                    pass
 
     @pytest.mark.asyncio
     async def test_get_active_task_ids(self):
