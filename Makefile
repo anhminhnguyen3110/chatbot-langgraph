@@ -9,8 +9,14 @@ help:
 	@echo "  make lint          - Lint code with ruff"
 	@echo "  make type-check    - Run mypy type checking"
 	@echo "  make security      - Run security checks with bandit"
-	@echo "  make test          - Run tests"
+	@echo "  make test          - Run all tests"
+	@echo "  make test-unit     - Run only unit tests"
+	@echo "  make test-integration - Run only integration tests"
+	@echo "  make test-e2e      - Run only e2e tests"
+	@echo "  make test-background - Run background task tests"
 	@echo "  make test-cov      - Run tests with coverage"
+	@echo "  make docker-build  - Build Docker image"
+	@echo "  make docker-test   - Run e2e tests in Docker"
 	@echo "  make ci-check      - Run all CI checks locally"
 	@echo "  make clean         - Clean cache files"
 	@echo "  make run           - Run the server"
@@ -50,8 +56,29 @@ security:
 test:
 	uv run pytest
 
+test-unit:
+	uv run pytest -m unit -v
+
+test-integration:
+	uv run pytest -m integration -v
+
+test-e2e:
+	uv run pytest -m e2e -v
+
+test-background:
+	uv run pytest -m background_task -v
+
 test-cov:
 	uv run pytest --cov=src --cov-report=html --cov-report=term
+
+docker-build:
+	docker build -t aegra:latest -f deployments/docker/Dockerfile .
+
+docker-test:
+	docker-compose -f docker-compose.yml up -d postgres
+	sleep 5
+	docker-compose -f docker-compose.yml run --rm agent pytest -m e2e
+	docker-compose -f docker-compose.yml down
 
 ci-check: format lint type-check security test
 	@echo ""

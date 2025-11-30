@@ -9,6 +9,7 @@ from langchain_core.tools import StructuredTool
 MCP_URL = os.getenv("AML_MCP_URL", "http://localhost:5000/mcp")
 MCP_SERVER_NAME = os.getenv("AML_MCP_SERVER_NAME", "aml-mcp")
 
+
 def create_mcp_client() -> MultiServerMCPClient:
     client = MultiServerMCPClient(
         {
@@ -23,9 +24,9 @@ def create_mcp_client() -> MultiServerMCPClient:
 
 async def get_mcp_tools_async():
     """Async function to get MCP tools"""
-    
+
     mcp_client = create_mcp_client()
-    
+
     try:
         tools = await mcp_client.get_tools()
         return tools
@@ -41,4 +42,3 @@ async def load_mcp_tools(module: Any, graph_id: str):
         local_tools = getattr(module, "local_tools", [])
         module.all_tools = [*local_tools, *mcp_tools]
         print(f"[MCP] ✅ Loaded {len(mcp_tools)} MCP tools for '{graph_id}'")
-

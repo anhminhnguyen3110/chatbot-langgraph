@@ -48,6 +48,10 @@ from tests.fixtures.test_helpers import (
     make_run,
     make_thread,
 )
+from tests.fixtures.background_task import (
+    MockRunBroker,
+    BackgroundTaskHelper,
+)
 
 # Export fixtures for use in tests
 __all__ = [
@@ -74,6 +78,8 @@ __all__ = [
     "DummyRun",
     "DummyThread",
     "DummyStoreItem",
+    "MockRunBroker",
+    "BackgroundTaskHelper",
 ]
 
 

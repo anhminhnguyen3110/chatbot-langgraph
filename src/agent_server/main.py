@@ -34,6 +34,7 @@ from .api.threads import router as threads_router
 from .core.auth_middleware import get_auth_backend, on_auth_error
 from .core.database import db_manager
 from .core.health import router as health_router
+from .core.shutdown import shutdown_manager
 from .middleware import DoubleEncodedJSONMiddleware, StructLogMiddleware
 from .models.errors import AgentProtocolError, get_error_type
 from .observability.base import get_observability_manager
@@ -66,9 +67,24 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # Initialize event store cleanup task
     await event_store.start_cleanup_task()
 
+    # Initialize broker cleanup task
+    from .services.broker import broker_manager
+
+    await broker_manager.start_cleanup_task()
+
+    # Install signal handlers for graceful shutdown
+    shutdown_manager.install_signal_handlers()
+    logger.info("Application startup complete")
+
     yield
 
-    # Shutdown: Clean up connections and cancel active runs
+    # Shutdown: Gracefully terminate all background tasks
+    logger.info("Application shutdown initiated")
+
+    # Gracefully shutdown tracked tasks
+    await shutdown_manager.shutdown()
+
+    # Cancel any remaining active runs not tracked by shutdown manager
     for task in active_runs.values():
         if not task.done():
             task.cancel()
@@ -76,7 +92,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # Stop event store cleanup task
     await event_store.stop_cleanup_task()
 
+    # Stop broker cleanup task
+    from .services.broker import broker_manager
+
+    await broker_manager.stop_cleanup_task()
+
     await db_manager.close()
+    logger.info("Application shutdown complete")
 
 
 # Create FastAPI application

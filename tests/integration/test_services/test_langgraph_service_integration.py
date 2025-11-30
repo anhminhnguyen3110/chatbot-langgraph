@@ -272,7 +272,7 @@ def create_graph():
 
             graph_info = {"file_path": str(graph_file), "export_name": "graph"}
 
-            with pytest.raises(ValueError, match="Graph export not found"):
+            with pytest.raises(ValueError, match=r"Graph export .* not found"):
                 await service._load_graph_from_file("missing_export", graph_info)
 
 

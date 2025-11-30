@@ -80,20 +80,24 @@ middlewares = [
     ),
 ]
 
+
 def _create_agent():
     """Create agent with current tools. Called after async loaders complete."""
     import sys
+
     current_module = sys.modules[__name__]
-    tools = getattr(current_module, 'all_tools', local_tools)
-    
+    tools = getattr(current_module, "all_tools", local_tools)
+
     return create_agent(
         model=primary_model,
         tools=tools,
         middleware=middlewares,
     )
 
+
 def __post_async_load__():
     global agent
     agent = _create_agent()
+
 
 agent = None
