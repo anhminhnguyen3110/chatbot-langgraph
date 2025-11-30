@@ -1,8 +1,8 @@
 from __future__ import annotations
-from typing import Dict
+
 from langchain_core.tools import BaseTool, StructuredTool
 
-__tool_registry: Dict[str, StructuredTool] = {}
+__tool_registry: dict[str, StructuredTool] = {}
 
 
 def add_tool(tool_name: str, tool: StructuredTool):

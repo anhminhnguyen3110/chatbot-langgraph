@@ -1,23 +1,21 @@
-import asyncio
 import os
-import json
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
-from langchain.chat_models import init_chat_model
 from langchain.agents.middleware import (
-    SummarizationMiddleware,
-    ModelCallLimitMiddleware,
-    ToolCallLimitMiddleware,
-    ModelFallbackMiddleware,
-    TodoListMiddleware,
-    ContextEditingMiddleware,
     ClearToolUsesEdit,
+    ContextEditingMiddleware,
+    ModelCallLimitMiddleware,
+    ModelFallbackMiddleware,
+    SummarizationMiddleware,
+    TodoListMiddleware,
+    ToolCallLimitMiddleware,
     ToolRetryMiddleware,
 )
+from langchain.chat_models import init_chat_model
 
-from react_agent.tools.tool_registry import get_all_tool
 from react_agent.tools import register_all_local_tools
+from react_agent.tools.tool_registry import get_all_tool
 
 load_dotenv()
 
@@ -80,20 +78,24 @@ middlewares = [
     ),
 ]
 
+
 def _create_agent():
     """Create agent with current tools. Called after async loaders complete."""
     import sys
+
     current_module = sys.modules[__name__]
-    tools = getattr(current_module, 'all_tools', local_tools)
-    
+    tools = getattr(current_module, "all_tools", local_tools)
+
     return create_agent(
         model=primary_model,
         tools=tools,
         middleware=middlewares,
     )
 
+
 def __post_async_load__():
     global agent
     agent = _create_agent()
+
 
 agent = None

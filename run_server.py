@@ -8,6 +8,7 @@ This script:
 3. Can be used for testing our LangGraph integration
 """
 
+import contextlib
 import logging
 import os
 import sys
@@ -20,9 +21,12 @@ from dotenv import load_dotenv
 from src.agent_server.utils.setup_logging import get_logging_config, setup_logging
 
 try:
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-except Exception:
-    pass
+    import asyncio
+except ImportError:
+    asyncio = None
+if asyncio is not None:
+    with contextlib.suppress(Exception):
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 # Add graphs directory to Python path so imports can be resolved

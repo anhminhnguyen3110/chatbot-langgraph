@@ -83,15 +83,17 @@ class LangGraphService:
             else:
                 graph_path = config.get("path")
                 async_loaders = config.get("async_loaders")
-            
+
             if not graph_path or ":" not in graph_path:
                 raise ValueError(f"Invalid graph path for '{graph_id}': {graph_path}")
-            
+
             file_path, export_name = graph_path.split(":", 1)
             self._graph_registry[graph_id] = {
                 "file_path": file_path,
                 "export_name": export_name,
-                "async_loaders": async_loaders if isinstance(async_loaders, dict) else None,
+                "async_loaders": async_loaders
+                if isinstance(async_loaders, dict)
+                else None,
             }
 
     def _register_async_loaders(self):
@@ -100,10 +102,12 @@ class LangGraphService:
         for info in self._graph_registry.values():
             if info.get("async_loaders"):
                 loaders.update(info["async_loaders"])
-        
+
         if loaders:
             AsyncModuleLoader.register_loaders_from_config(loaders)
-            logger.info(f"📦 Registered {len(loaders)} async loader(s): {', '.join(loaders.keys())}")
+            logger.info(
+                f"📦 Registered {len(loaders)} async loader(s): {', '.join(loaders.keys())}"
+            )
 
     async def _ensure_default_assistants(self) -> None:
         """Create a default assistant per graph with deterministic UUID.
@@ -208,12 +212,12 @@ class LangGraphService:
         """Load graph from filesystem using AsyncModuleLoader"""
         loaders_dict = graph_info.get("async_loaders")
         loader_names = list(loaders_dict.keys()) if loaders_dict else None
-        
+
         return await AsyncModuleLoader.load_module_from_file(
             graph_id,
             Path(graph_info["file_path"]),
             graph_info["export_name"],
-            loader_names
+            loader_names,
         )
 
     def list_graphs(self) -> dict[str, str]:

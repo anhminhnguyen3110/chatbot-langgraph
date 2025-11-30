@@ -16,7 +16,10 @@ async def test_lifespan_registers_langfuse_provider(monkeypatch):
     monkeypatch.setenv("LANGFUSE_LOGGING", "true")
 
     # Reload the module to pick up the env var change
-    import src.agent_server.observability.langfuse_integration as langfuse_module
+    try:
+        import src.agent_server.observability.langfuse_integration as langfuse_module
+    except ModuleNotFoundError as e:
+        pytest.skip(f"Skipping test due to missing dependency: {e}")
 
     importlib.reload(langfuse_module)
     # Reload main module to get the updated provider

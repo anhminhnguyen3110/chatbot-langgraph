@@ -28,15 +28,15 @@ async def get_keycloak_token(
     keycloak_config: dict, username: str, password: str
 ) -> str:
     """Get JWT token from Keycloak.
-    
+
     Args:
         keycloak_config: Keycloak configuration
         username: Username
         password: Password
-        
+
     Returns:
         JWT access token
-        
+
     Raises:
         Exception: If token request fails
     """
@@ -97,9 +97,7 @@ class TestKeycloakAuthentication:
         not os.getenv("TEST_KEYCLOAK_USER"),
         reason="TEST_KEYCLOAK_USER not set",
     )
-    async def test_valid_token_accepted(
-        self, keycloak_config, agent_base_url
-    ):
+    async def test_valid_token_accepted(self, keycloak_config, agent_base_url):
         """Test that valid Keycloak tokens are accepted."""
         username = os.getenv("TEST_KEYCLOAK_USER", "testuser")
         password = os.getenv("TEST_KEYCLOAK_PASSWORD", "testpass")
@@ -121,9 +119,7 @@ class TestKeycloakAuthentication:
         not os.getenv("TEST_KEYCLOAK_USER") or not os.getenv("GEMINI_API_KEY"),
         reason="TEST_KEYCLOAK_USER or GEMINI_API_KEY not set",
     )
-    async def test_authenticated_model_call(
-        self, keycloak_config, agent_base_url
-    ):
+    async def test_authenticated_model_call(self, keycloak_config, agent_base_url):
         """Test making authenticated API call that triggers model execution."""
         username = os.getenv("TEST_KEYCLOAK_USER", "testuser")
         password = os.getenv("TEST_KEYCLOAK_PASSWORD", "testpass")
@@ -230,16 +226,14 @@ class TestKeycloakAuthentication:
             last_message = messages[-1]
             assert last_message.get("type") in ["ai", "assistant"]
 
-            print(f"\n✅ Model call succeeded with Keycloak auth!")
+            print("\n✅ Model call succeeded with Keycloak auth!")
             print(f"   Response: {last_message.get('content', '')[:100]}")
 
     @pytest.mark.skipif(
         not os.getenv("TEST_KEYCLOAK_USER"),
         reason="TEST_KEYCLOAK_USER not set",
     )
-    async def test_quota_metadata_in_run(
-        self, keycloak_config, agent_base_url
-    ):
+    async def test_quota_metadata_in_run(self, keycloak_config, agent_base_url):
         """Test that quota metadata is added to runs."""
         username = os.getenv("TEST_KEYCLOAK_USER", "testuser")
         password = os.getenv("TEST_KEYCLOAK_PASSWORD", "testpass")
@@ -280,7 +274,7 @@ class TestKeycloakAuthentication:
 
             # Check metadata has quota information
             metadata = run_data.get("metadata", {})
-            
+
             # Note: Quota metadata is added by auth.on.runs.create
             # It may not be immediately visible in response
             # but should be enforced server-side
@@ -299,9 +293,7 @@ class TestKeycloakMultiTenant:
         not os.getenv("TEST_KEYCLOAK_USER"),
         reason="TEST_KEYCLOAK_USER not set",
     )
-    async def test_user_can_only_see_own_threads(
-        self, keycloak_config, agent_base_url
-    ):
+    async def test_user_can_only_see_own_threads(self, keycloak_config, agent_base_url):
         """Test that users can only see their own threads."""
         username = os.getenv("TEST_KEYCLOAK_USER", "testuser")
         password = os.getenv("TEST_KEYCLOAK_PASSWORD", "testpass")

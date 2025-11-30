@@ -362,7 +362,7 @@ class TestLangGraphServiceGraphs:
 
             graph_info = {"file_path": "test.py", "export_name": "missing_export"}
 
-            with pytest.raises(ValueError, match="Graph export not found"):
+            with pytest.raises(ValueError, match="Graph export .* not found"):
                 await service._load_graph_from_file("test_graph", graph_info)
 
     def test_list_graphs(self):

@@ -16,11 +16,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.auth_ctx import with_auth_ctx
 from ..core.auth_deps import get_current_user
+from ..core.db_helpers import (
+    update_run_in_db,
+    update_thread_in_db,
+)
 from ..core.orm import Assistant as AssistantORM
 from ..core.orm import Run as RunORM
 from ..core.orm import Thread as ThreadORM
 from ..core.orm import _get_session_maker, get_session
 from ..core.serializers import GeneralSerializer
+from ..core.shutdown import shutdown_manager
 from ..core.sse import create_end_event, get_sse_headers
 from ..models import Run, RunCreate, RunStatus, User
 from ..services.graph_streaming import stream_graph_events
@@ -74,9 +79,11 @@ def map_command_to_langgraph(cmd: dict[str, Any]) -> Command:
 
 
 async def set_thread_status(session: AsyncSession, thread_id: str, status: str) -> None:
-    """Update the status column of a thread.
+    """Update the status column of a thread using provided session.
 
     Status is validated to ensure it conforms to API specification.
+    This version maintains session parameter for backward compatibility where needed.
+    For new code, use update_thread_in_db() directly instead.
     """
     # Validate status conforms to API specification
     from ..utils.status_compat import validate_thread_status
@@ -269,7 +276,7 @@ async def create_run(
     )
 
     # Start execution asynchronously
-    # Don't pass the session to avoid transaction conflicts
+    # Session management now handled internally by db_helpers
     task = asyncio.create_task(
         execute_run_async(
             run_id,
@@ -280,7 +287,6 @@ async def create_run(
             config,
             context,
             request.stream_mode,
-            None,  # Don't pass session to avoid conflicts
             request.checkpoint,
             request.command,
             request.interrupt_before,
@@ -293,6 +299,7 @@ async def create_run(
         f"[create_run] background task created task_id={id(task)} for run_id={run_id}"
     )
     active_runs[run_id] = task
+    shutdown_manager.register_task(run_id, task)
 
     return run
 
@@ -400,7 +407,7 @@ async def create_and_stream_run(
     )
 
     # Start background execution that will populate the broker
-    # Don't pass the session to avoid transaction conflicts
+    # Session management now handled internally by db_helpers
     task = asyncio.create_task(
         execute_run_async(
             run_id,
@@ -411,7 +418,6 @@ async def create_and_stream_run(
             config,
             context,
             request.stream_mode,
-            None,  # Don't pass session to avoid conflicts
             request.checkpoint,
             request.command,
             request.interrupt_before,
@@ -424,6 +430,7 @@ async def create_and_stream_run(
         f"[create_and_stream_run] background task created task_id={id(task)} for run_id={run_id}"
     )
     active_runs[run_id] = task
+    shutdown_manager.register_task(run_id, task)
 
     # Extract requested stream mode(s)
     stream_mode = request.stream_mode
@@ -703,6 +710,7 @@ async def wait_for_run(
     await session.commit()
 
     # Start execution asynchronously
+    # Session management now handled internally by db_helpers
     task = asyncio.create_task(
         execute_run_async(
             run_id,
@@ -713,7 +721,6 @@ async def wait_for_run(
             config,
             context,
             request.stream_mode,
-            None,  # Don't pass session to avoid conflicts
             request.checkpoint,
             request.command,
             request.interrupt_before,
@@ -726,6 +733,7 @@ async def wait_for_run(
         f"[wait_for_run] background task created task_id={id(task)} for run_id={run_id}"
     )
     active_runs[run_id] = task
+    shutdown_manager.register_task(run_id, task)
 
     # Wait for task to complete with timeout
     try:
@@ -929,7 +937,6 @@ async def execute_run_async(
     config: dict | None = None,
     context: dict | None = None,
     stream_mode: list[str] | None = None,
-    session: AsyncSession | None = None,
     checkpoint: dict | None = None,
     command: dict[str, Any] | None = None,
     interrupt_before: str | list[str] | None = None,
@@ -937,14 +944,10 @@ async def execute_run_async(
     _multitask_strategy: str | None = None,
     subgraphs: bool | None = False,
 ) -> None:
-    """Execute run asynchronously in background using streaming to capture all events"""  # Use provided session or get a new one
-    if session is None:
-        maker = _get_session_maker()
-        session = maker()
-
+    """Execute run asynchronously in background using streaming to capture all events"""
     try:
-        # Update status
-        await update_run_status(run_id, "running", session=session)
+        # Update status using short-lived session
+        await update_run_in_db(run_id, status="running")
 
         # Get graph and execute
         langgraph_service = get_langgraph_service()
@@ -1028,49 +1031,29 @@ async def execute_run_async(
                     final_output = event_data
 
         if has_interrupt:
-            await update_run_status(
-                run_id, "interrupted", output=final_output or {}, session=session
+            await update_run_in_db(
+                run_id, status="interrupted", output=final_output or {}
             )
-            if not session:
-                raise RuntimeError(
-                    f"No database session available to update thread {thread_id} status"
-                )
-            await set_thread_status(session, thread_id, "interrupted")
+            await update_thread_in_db(thread_id, status="interrupted")
 
         else:
             # Update with results - use standard status
-            await update_run_status(
-                run_id, "success", output=final_output or {}, session=session
-            )
+            await update_run_in_db(run_id, status="success", output=final_output or {})
             # Mark thread back to idle
-            if not session:
-                raise RuntimeError(
-                    f"No database session available to update thread {thread_id} status"
-                )
-            await set_thread_status(session, thread_id, "idle")
+            await update_thread_in_db(thread_id, status="idle")
 
     except asyncio.CancelledError:
         # Store empty output to avoid JSON serialization issues - use standard status
-        await update_run_status(run_id, "interrupted", output={}, session=session)
-        if not session:
-            raise RuntimeError(
-                f"No database session available to update thread {thread_id} status"
-            ) from None
-        await set_thread_status(session, thread_id, "idle")
+        await update_run_in_db(run_id, status="interrupted", output={})
+        await update_thread_in_db(thread_id, status="idle")
         # Signal cancellation to broker
         await streaming_service.signal_run_cancelled(run_id)
         raise
     except Exception as e:
         # Store empty output to avoid JSON serialization issues - use standard status
-        await update_run_status(
-            run_id, "error", output={}, error=str(e), session=session
-        )
-        if not session:
-            raise RuntimeError(
-                f"No database session available to update thread {thread_id} status"
-            ) from None
+        await update_run_in_db(run_id, status="error", output={}, error_message=str(e))
         # Set thread status to "error" when run fails (matches API specification)
-        await set_thread_status(session, thread_id, "error")
+        await update_thread_in_db(thread_id, status="error")
         # Signal error to broker
         await streaming_service.signal_run_error(run_id, str(e))
         raise
@@ -1078,6 +1061,7 @@ async def execute_run_async(
         # Clean up broker
         await streaming_service.cleanup_run(run_id)
         active_runs.pop(run_id, None)
+        shutdown_manager.unregister_task(run_id)
 
 
 async def update_run_status(
@@ -1190,6 +1174,7 @@ async def delete_run(
     task = active_runs.pop(run_id, None)
     if task and not task.done():
         task.cancel()
+    shutdown_manager.unregister_task(run_id)
 
     # 204 No Content
     return

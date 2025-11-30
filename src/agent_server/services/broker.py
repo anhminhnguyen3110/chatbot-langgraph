@@ -12,52 +12,145 @@ from .base_broker import BaseBrokerManager, BaseRunBroker
 logger = structlog.getLogger(__name__)
 
 
+class BackpressureError(Exception):
+    """Raised when queue is full and backpressure is applied"""
+
+    pass
+
+
 class RunBroker(BaseRunBroker):
     """Manages event queuing and distribution for a specific run"""
 
-    def __init__(self, run_id: str):
+    def __init__(self, run_id: str, maxsize: int = 10000):
         self.run_id = run_id
-        self.queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
+        self.queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue(maxsize=maxsize)
         self.finished = asyncio.Event()
         self._created_at = asyncio.get_event_loop().time()
+        self._total_events = 0
+        self._consumed_events = 0
+        self._slow_consumer_threshold = 1000
 
-    async def put(self, event_id: str, payload: Any) -> None:
-        """Put an event into the broker queue"""
+    async def put(
+        self, event_id: str, payload: Any, timeout: float | None = 5.0
+    ) -> None:
+        """Put an event into the broker queue with backpressure.
+
+        Args:
+            event_id: Unique event identifier
+            payload: Event data
+            timeout: Max seconds to wait if queue is full (None = wait forever)
+
+        Raises:
+            BackpressureError: If queue is full and timeout expires
+        """
         if self.finished.is_set():
             logger.warning(
                 f"Attempted to put event {event_id} into finished broker for run {self.run_id}"
             )
             return
 
-        await self.queue.put((event_id, payload))
+        # Check consumer lag
+        lag = self._total_events - self._consumed_events
+        if lag > self._slow_consumer_threshold:
+            logger.warning(
+                f"Slow consumer detected for run {self.run_id}: {lag} events behind",
+                run_id=self.run_id,
+                lag=lag,
+                threshold=self._slow_consumer_threshold,
+            )
+
+        # Put with timeout to detect backpressure
+        try:
+            if timeout is not None:
+                await asyncio.wait_for(
+                    self.queue.put((event_id, payload)), timeout=timeout
+                )
+            else:
+                await self.queue.put((event_id, payload))
+
+            self._total_events += 1
+
+        except TimeoutError:
+            logger.error(
+                f"Queue full for run {self.run_id}, backpressure applied",
+                run_id=self.run_id,
+                queue_size=self.queue.qsize(),
+                lag=lag,
+            )
+            raise BackpressureError(
+                f"Queue full for run {self.run_id} after {timeout}s timeout"
+            ) from None
 
         # Check if this is an end event
         if isinstance(payload, tuple) and len(payload) >= 1 and payload[0] == "end":
             self.mark_finished()
 
     async def aiter(self) -> AsyncIterator[tuple[str, Any]]:
-        """Async iterator yielding (event_id, payload) pairs"""
+        """Async iterator yielding (event_id, payload) pairs.
+
+        Uses efficient event-based waiting instead of polling to reduce CPU usage.
+        """
         while True:
-            try:
-                # Use timeout to check if run is finished
-                event_id, payload = await asyncio.wait_for(
-                    self.queue.get(), timeout=0.1
-                )
-                yield event_id, payload
+            # Try non-blocking get first
+            if not self.queue.empty():
+                try:
+                    event_id, payload = self.queue.get_nowait()
+                    self._consumed_events += 1
+                    yield event_id, payload
 
-                # Check if this is an end event
-                if (
-                    isinstance(payload, tuple)
-                    and len(payload) >= 1
-                    and payload[0] == "end"
-                ):
-                    break
+                    # Check if this is an end event
+                    if (
+                        isinstance(payload, tuple)
+                        and len(payload) >= 1
+                        and payload[0] == "end"
+                    ):
+                        break
+                except asyncio.QueueEmpty:
+                    pass
 
-            except TimeoutError:
-                # Check if run is finished and queue is empty
-                if self.finished.is_set() and self.queue.empty():
-                    break
-                continue
+            # Check if finished and queue is empty
+            if self.finished.is_set() and self.queue.empty():
+                break
+
+            # Wait for either new item or finish signal
+            get_task = asyncio.create_task(self.queue.get())
+            wait_task = asyncio.create_task(self.finished.wait())
+
+            done, pending = await asyncio.wait(
+                {get_task, wait_task}, return_when=asyncio.FIRST_COMPLETED
+            )
+
+            # Cancel pending tasks
+            for task in pending:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+
+            # Process completed task
+            for task in done:
+                if task is get_task and not task.cancelled():
+                    with contextlib.suppress(Exception):
+                        event_id, payload = task.result()
+                        self._consumed_events += 1
+                        yield event_id, payload
+
+                        # Check if this is an end event
+                        if (
+                            isinstance(payload, tuple)
+                            and len(payload) >= 1
+                            and payload[0] == "end"
+                        ):
+                            return
+                elif task is wait_task:
+                    # Finished signal received, drain queue and exit
+                    while not self.queue.empty():
+                        try:
+                            event_id, payload = self.queue.get_nowait()
+                            self._consumed_events += 1
+                            yield event_id, payload
+                        except asyncio.QueueEmpty:
+                            break
+                    return
 
     def mark_finished(self) -> None:
         """Mark this broker as finished"""
@@ -76,19 +169,36 @@ class RunBroker(BaseRunBroker):
         """Get the age of this broker in seconds"""
         return asyncio.get_event_loop().time() - self._created_at
 
+    def get_lag(self) -> int:
+        """Get the number of events behind consumers are"""
+        return self._total_events - self._consumed_events
+
+    def get_queue_size(self) -> int:
+        """Get current queue size"""
+        return self.queue.qsize()
+
 
 class BrokerManager(BaseBrokerManager):
     """Manages multiple RunBroker instances"""
 
-    def __init__(self) -> None:
+    def __init__(self, default_maxsize: int = 10000) -> None:
         self._brokers: dict[str, RunBroker] = {}
         self._cleanup_task: asyncio.Task | None = None
+        self._default_maxsize = default_maxsize
 
-    def get_or_create_broker(self, run_id: str) -> RunBroker:
-        """Get or create a broker for a run"""
+    def get_or_create_broker(
+        self, run_id: str, maxsize: int | None = None
+    ) -> RunBroker:
+        """Get or create a broker for a run
+
+        Args:
+            run_id: Run identifier
+            maxsize: Max queue size (uses default if None)
+        """
         if run_id not in self._brokers:
-            self._brokers[run_id] = RunBroker(run_id)
-            logger.debug(f"Created new broker for run {run_id}")
+            size = maxsize if maxsize is not None else self._default_maxsize
+            self._brokers[run_id] = RunBroker(run_id, maxsize=size)
+            logger.debug(f"Created new broker for run {run_id} with maxsize={size}")
         return self._brokers[run_id]
 
     def get_broker(self, run_id: str) -> RunBroker | None:

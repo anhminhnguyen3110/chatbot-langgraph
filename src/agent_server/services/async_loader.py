@@ -2,8 +2,9 @@
 
 import importlib.util
 import sys
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 import structlog
 
@@ -29,14 +30,20 @@ class AsyncModuleLoader:
 
     @classmethod
     async def load_module_from_file(
-        cls, graph_id: str, file_path: Path, export_name: str, async_loaders: list[str] | None = None
+        cls,
+        graph_id: str,
+        file_path: Path,
+        export_name: str,
+        async_loaders: list[str] | None = None,
     ) -> Any:
         """Load graph module, run async loaders, call post-load hook, return graph"""
         if not file_path.exists():
             raise ValueError(f"Graph file not found: {file_path}")
 
         module_name = f"graphs.{graph_id}"
-        spec = importlib.util.spec_from_file_location(module_name, str(file_path.resolve()))
+        spec = importlib.util.spec_from_file_location(
+            module_name, str(file_path.resolve())
+        )
         if not spec or not spec.loader:
             raise ValueError(f"Failed to load graph module: {file_path}")
 
@@ -47,7 +54,9 @@ class AsyncModuleLoader:
         if async_loaders:
             await cls._run_async_loaders(module, graph_id, async_loaders)
 
-        if hasattr(module, "__post_async_load__") and callable(module.__post_async_load__):
+        if hasattr(module, "__post_async_load__") and callable(
+            module.__post_async_load__
+        ):
             module.__post_async_load__()
 
         if not hasattr(module, export_name):
@@ -56,7 +65,9 @@ class AsyncModuleLoader:
         return getattr(module, export_name)
 
     @classmethod
-    async def _run_async_loaders(cls, module: Any, graph_id: str, loader_names: list[str]):
+    async def _run_async_loaders(
+        cls, module: Any, graph_id: str, loader_names: list[str]
+    ):
         """Run specified async loaders for the module"""
         for name in loader_names:
             if name in cls._async_loaders:

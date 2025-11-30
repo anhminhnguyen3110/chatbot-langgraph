@@ -23,6 +23,7 @@ from starlette.authentication import (
 from starlette.requests import HTTPConnection
 from starlette.responses import JSONResponse
 
+from ..constants import PUBLIC_ENDPOINTS, PUBLIC_PATH_PREFIXES
 from ..models.errors import AgentProtocolError
 
 logger = structlog.getLogger(__name__)
@@ -118,6 +119,17 @@ class LangGraphAuthBackend(AuthenticationBackend):
         Raises:
             AuthenticationError: If authentication fails
         """
+        # Skip authentication for public endpoints
+        request_path = conn.url.path
+
+        if request_path in PUBLIC_ENDPOINTS:
+            logger.debug(f"Skipping auth for public endpoint: {request_path}")
+            return None
+
+        if any(request_path.startswith(prefix) for prefix in PUBLIC_PATH_PREFIXES):
+            logger.debug(f"Skipping auth for public path: {request_path}")
+            return None
+
         if self.auth_instance is None:
             logger.warning("No auth instance available, skipping authentication")
             return None
