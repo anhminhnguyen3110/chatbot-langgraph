@@ -70,7 +70,7 @@ class RunBroker(BaseRunBroker):
 
             self._total_events += 1
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(
                 f"Queue full for run {self.run_id}, backpressure applied",
                 run_id=self.run_id,
@@ -79,7 +79,7 @@ class RunBroker(BaseRunBroker):
             )
             raise BackpressureError(
                 f"Queue full for run {self.run_id} after {timeout}s timeout"
-            )
+            ) from None
 
         # Check if this is an end event
         if isinstance(payload, tuple) and len(payload) >= 1 and payload[0] == "end":
@@ -123,15 +123,13 @@ class RunBroker(BaseRunBroker):
             # Cancel pending tasks
             for task in pending:
                 task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await task
-                except asyncio.CancelledError:
-                    pass
 
             # Process completed task
             for task in done:
                 if task is get_task and not task.cancelled():
-                    try:
+                    with contextlib.suppress(Exception):
                         event_id, payload = task.result()
                         self._consumed_events += 1
                         yield event_id, payload
@@ -143,8 +141,6 @@ class RunBroker(BaseRunBroker):
                             and payload[0] == "end"
                         ):
                             return
-                    except Exception:
-                        pass
                 elif task is wait_task:
                     # Finished signal received, drain queue and exit
                     while not self.queue.empty():

@@ -4,9 +4,9 @@ Tests the new short-lived session helpers that prevent connection
 pool exhaustion.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, UTC
+
+import pytest
 
 
 @pytest.mark.unit
@@ -52,7 +52,7 @@ class TestShortSession:
             mock_maker.return_value.return_value = async_cm
 
             with pytest.raises(ValueError):
-                async with get_short_session() as session:
+                async with get_short_session():
                     raise ValueError("Test error")
 
             # Should rollback on error (async call)

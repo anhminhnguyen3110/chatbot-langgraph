@@ -226,7 +226,7 @@ class TestKeycloakAuthentication:
             last_message = messages[-1]
             assert last_message.get("type") in ["ai", "assistant"]
 
-            print(f"\n✅ Model call succeeded with Keycloak auth!")
+            print("\n✅ Model call succeeded with Keycloak auth!")
             print(f"   Response: {last_message.get('content', '')[:100]}")
 
     @pytest.mark.skipif(

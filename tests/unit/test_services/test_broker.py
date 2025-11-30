@@ -1,9 +1,12 @@
+
 """Unit tests for RunBroker and BrokerManager"""
 
 import asyncio
+import unittest.mock as mock
 
 import pytest
 
+from src.agent_server.services import broker as broker_module
 from src.agent_server.services.broker import BrokerManager, RunBroker
 
 
@@ -13,7 +16,6 @@ class TestRunBroker:
         """Test aiter handles exception in get_task branch (line 104)"""
         broker = RunBroker("run-exc")
         # Patch queue.get to raise
-        import unittest.mock as mock
 
         with mock.patch.object(broker.queue, "get", side_effect=Exception("fail")):
             # Put an event to ensure queue is not empty
@@ -30,10 +32,8 @@ class TestRunBroker:
     async def test_aiter_cancelled_wait_task(self):
         """Test aiter handles CancelledError in wait_task (line 143)"""
         broker = RunBroker("run-cancel")
-        import unittest.mock as mock
 
         # Patch finished.wait to block, then cancel
-        orig_wait = broker.finished.wait
 
         async def fake_wait():
             raise asyncio.CancelledError()
@@ -49,19 +49,19 @@ class TestRunBroker:
                 events.append((event_id, payload))
             assert isinstance(events, list)
 
-    def test_mark_finished_logs(self, caplog, capsys):
+    def test_mark_finished_logs(self):
         """Test mark_finished logs debug (line 152)"""
-        broker = RunBroker("run-log")
-        with caplog.at_level("DEBUG"):
+
+        mock_logger = mock.MagicMock()
+        with mock.patch.object(broker_module, "logger", mock_logger):
+            broker = RunBroker("run-log")
             broker.mark_finished()
-        # structlog may log to stdout, so check both
-        log_msg = "Broker for run run-log marked as finished"
-        in_caplog = log_msg in caplog.text
-        in_stdout = False
-        if not in_caplog:
-            captured = capsys.readouterr()
-            in_stdout = log_msg in captured.out or log_msg in captured.err
-        assert in_caplog or in_stdout
+
+        # Verify logger.debug was called
+        mock_logger.debug.assert_called_once()
+        call_args = str(mock_logger.debug.call_args)
+        assert "run-log" in call_args
+        assert "finished" in call_args
 
     """Test RunBroker class"""
 
@@ -161,56 +161,66 @@ class TestRunBroker:
 
 
 class TestBrokerManager:
-    def test_cleanup_broker_logs(self, caplog, capsys):
+    def test_cleanup_broker_logs(self):
         """Test cleanup_broker logs debug (line 248)"""
-        manager = BrokerManager()
-        broker = manager.get_or_create_broker("run-log")
-        with caplog.at_level("DEBUG"):
-            manager.cleanup_broker("run-log")
-        log_msg = "Marked broker for run run-log for cleanup"
-        in_caplog = log_msg in caplog.text
-        in_stdout = False
-        if not in_caplog:
-            captured = capsys.readouterr()
-            in_stdout = log_msg in captured.out or log_msg in captured.err
-        assert in_caplog or in_stdout
 
-    def test_remove_broker_logs(self, caplog, capsys):
+        mock_logger = mock.MagicMock()
+        with mock.patch.object(broker_module, "logger", mock_logger):
+            manager = BrokerManager()
+            manager.get_or_create_broker("run-log")
+            manager.cleanup_broker("run-log")
+
+        # Verify logger.debug was called with correct message
+        assert mock_logger.debug.called
+        call_args = str(mock_logger.debug.call_args)
+        assert "run-log" in call_args
+        assert "cleanup" in call_args
+
+    def test_remove_broker_logs(self):
         """Test remove_broker logs debug (line 251-252)"""
-        manager = BrokerManager()
-        broker = manager.get_or_create_broker("run-log")
-        with caplog.at_level("DEBUG"):
+
+        mock_logger = mock.MagicMock()
+        with mock.patch.object(broker_module, "logger", mock_logger):
+            manager = BrokerManager()
+            manager.get_or_create_broker("run-log")
             manager.remove_broker("run-log")
-        log_msg = "Removed broker for run run-log"
-        in_caplog = log_msg in caplog.text
-        in_stdout = False
-        if not in_caplog:
-            captured = capsys.readouterr()
-            in_stdout = log_msg in captured.out or log_msg in captured.err
-        assert in_caplog or in_stdout
+
+        # Verify logger.debug was called
+        assert mock_logger.debug.called
+        call_args = str(mock_logger.debug.call_args)
+        assert "run-log" in call_args
+        assert "Removed" in call_args
 
     @pytest.mark.asyncio
-    async def test_cleanup_task_logs_error(self, caplog):
+    async def test_cleanup_task_logs_error(self, capsys):
         """Test _cleanup_old_brokers logs error (lines 256-257)"""
         manager = BrokerManager()
-        # Patch _brokers to raise in is_finished
         broker = manager.get_or_create_broker("run-err")
-        import unittest.mock as mock
 
-        with mock.patch.object(broker, "is_finished", side_effect=Exception("fail")):
-            with caplog.at_level("ERROR"):
-                # Patch sleep to run only once
-                async def fast_sleep(_):
-                    raise Exception("fail")
+        sleep_count = 0
 
-                with mock.patch("asyncio.sleep", side_effect=fast_sleep):
-                    try:
-                        await manager._cleanup_old_brokers()
-                    except Exception:
-                        pass
-        assert any(
-            "Error in broker cleanup task" in m for m in caplog.text.splitlines()
-        )
+        async def fast_sleep(seconds):
+            nonlocal sleep_count
+            sleep_count += 1
+            if sleep_count == 1:
+                # First call raises exception to trigger error logging
+                raise Exception("fail")
+            else:
+                # Second call raises CancelledError to exit loop
+                raise asyncio.CancelledError()
+
+        with (
+            mock.patch.object(broker, "is_finished", side_effect=Exception("fail")),
+            mock.patch("asyncio.sleep", side_effect=fast_sleep),
+        ):
+            import contextlib
+
+            with contextlib.suppress(asyncio.CancelledError):
+                await manager._cleanup_old_brokers()
+
+        captured = capsys.readouterr()
+        log_output = captured.out + captured.err
+        assert "Error in broker cleanup task: fail" in log_output
 
     """Test BrokerManager class"""
 
@@ -309,7 +319,6 @@ class TestBrokerManager:
     async def test_start_and_stop_cleanup_task(self):
         """Test starting and stopping cleanup task (fast sleep)"""
         manager = BrokerManager()
-        import unittest.mock as mock
 
         async def fast_sleep(_):
             return
@@ -324,7 +333,6 @@ class TestBrokerManager:
     @pytest.mark.asyncio
     async def test_cleanup_task_with_exception(self):
         """Test cleanup task handles exceptions gracefully (fast sleep)"""
-        import unittest.mock as mock
 
         manager = BrokerManager()
         broker = manager.get_or_create_broker("test-run")
@@ -354,7 +362,6 @@ class TestBrokerManager:
     @pytest.mark.asyncio
     async def test_cleanup_old_brokers_logic(self):
         """Test cleanup old brokers removes old finished brokers"""
-        from unittest import mock
 
         manager = BrokerManager()
 

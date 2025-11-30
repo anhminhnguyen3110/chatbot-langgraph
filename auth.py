@@ -209,28 +209,28 @@ elif AUTH_TYPE == "keycloak":
             ) from e
 
     @auth.on.threads.create
-    async def on_thread_create(ctx: Auth.types.AuthContext, value: dict[str, Any]):
+    async def on_thread_create(ctx: Auth.types.AuthContext, _value: dict[str, Any]):
         """Add owner metadata to new threads"""
         user_id = ctx.user.identity
-        metadata = value.setdefault("metadata", {})
+        metadata = _value.setdefault("metadata", {})
         metadata["owner"] = user_id
         logger.debug(f"Thread creation by user: {user_id}")
 
     @auth.on.threads.read
-    async def on_thread_read(ctx: Auth.types.AuthContext, value: dict[str, Any]):
+    async def on_thread_read(ctx: Auth.types.AuthContext, _value: dict[str, Any]):
         """Verify thread ownership before read"""
         user_id = ctx.user.identity
         # Return filter to only show user's own threads
         return {"owner": user_id}
 
     @auth.on.threads.update
-    async def on_thread_update(ctx: Auth.types.AuthContext, value: dict[str, Any]):
+    async def on_thread_update(ctx: Auth.types.AuthContext, _value: dict[str, Any]):
         """Verify ownership before update"""
         user_id = ctx.user.identity
         return {"owner": user_id}
 
     @auth.on.threads.delete
-    async def on_thread_delete(ctx: Auth.types.AuthContext, value: dict[str, Any]):
+    async def on_thread_delete(ctx: Auth.types.AuthContext, _value: dict[str, Any]):
         """Verify ownership before delete"""
         user_id = ctx.user.identity
         return {"owner": user_id}

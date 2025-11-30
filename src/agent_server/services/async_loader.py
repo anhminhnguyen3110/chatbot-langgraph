@@ -2,8 +2,9 @@
 
 import importlib.util
 import sys
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 import structlog
 

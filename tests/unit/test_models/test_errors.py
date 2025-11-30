@@ -1,7 +1,5 @@
 """Unit tests for error models"""
 
-import pytest
-
 from src.agent_server.models.errors import AgentProtocolError, get_error_type
 
 

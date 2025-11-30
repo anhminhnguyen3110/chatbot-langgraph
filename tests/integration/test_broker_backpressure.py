@@ -58,7 +58,7 @@ class TestBackpressureIntegration:
 
         # All workloads should complete
         assert len(results) == 5
-        for run_id, stats in results.items():
+        for _run_id, stats in results.items():
             assert stats["consumed"] > 0
             assert stats["produced"] > 0
 
@@ -91,7 +91,7 @@ class TestBackpressureIntegration:
 
         try:
             await asyncio.wait_for(consumer_task, timeout=2.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             consumer_task.cancel()
 
         # Most events should be rejected due to tiny queue

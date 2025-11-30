@@ -86,12 +86,12 @@ class ShutdownManager:
         if self._tasks:
             try:
                 # Gather all tasks and wait
-                results = await asyncio.wait_for(
+                await asyncio.wait_for(
                     asyncio.gather(*self._tasks.values(), return_exceptions=True),
                     timeout=self.shutdown_timeout,
                 )
                 logger.info(f"Successfully shutdown {task_count} tasks")
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     f"Shutdown timeout after {self.shutdown_timeout}s, "
                     f"some tasks may not have completed gracefully"

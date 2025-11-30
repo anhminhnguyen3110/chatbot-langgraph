@@ -11,14 +11,11 @@ from unittest.mock import AsyncMock
 import pytest
 from dotenv import load_dotenv
 
-# Load test environment variables from .env.test
-test_env_path = Path(__file__).parent.parent / ".env.test"
-if test_env_path.exists():
-    load_dotenv(test_env_path, override=True)
-    # Ensure AUTH_TYPE is set to noop for tests
-    os.environ["AUTH_TYPE"] = "noop"
-
 from tests.fixtures.auth import DummyUser
+from tests.fixtures.background_task import (
+    BackgroundTaskHelper,
+    MockRunBroker,
+)
 from tests.fixtures.clients import (
     create_test_app,
     install_dummy_user_middleware,
@@ -48,10 +45,13 @@ from tests.fixtures.test_helpers import (
     make_run,
     make_thread,
 )
-from tests.fixtures.background_task import (
-    MockRunBroker,
-    BackgroundTaskHelper,
-)
+
+# Load test environment variables from .env.test
+test_env_path = Path(__file__).parent.parent / ".env.test"
+if test_env_path.exists():
+    load_dotenv(test_env_path, override=True)
+    # Ensure AUTH_TYPE is set to noop for tests
+    os.environ["AUTH_TYPE"] = "noop"
 
 # Export fixtures for use in tests
 __all__ = [
